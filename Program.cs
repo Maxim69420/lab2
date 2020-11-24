@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Numerics;
 using System.Collections.Generic;
 using System.Collections;
@@ -61,6 +61,7 @@ namespace lab1v2
         public abstract IEnumerable<Vector2> GetCoords();
         public abstract IEnumerable<DataItem> GetDataItem();
         public abstract Complex[] NearAverage(float eps);
+        public abstract double GetAverage();
         public abstract string ToLongString();
         public abstract string ToLongString(string format);
         public virtual string ToString(string format)
@@ -111,7 +112,7 @@ namespace lab1v2
                 coord.X = 0;
             }
         }
-        public V2DataOnGrid(string filename)
+        public V2DataOnGrid(string filename): base("Data", 2)
         {
             StreamReader get = new StreamReader(filename);
             try
@@ -142,6 +143,24 @@ namespace lab1v2
                 if (get != null)
                     get.Dispose();
             }
+        }
+        public override double GetAverage()
+        {
+            double av = 0, sum = 0;
+            for (int j = 0; j < OXY[1].count_node; j++)
+            {
+                for (int i = 0; i < OXY[0].count_node; i++)
+                {
+                    sum += complices[i, j].Magnitude;
+                }
+            }
+
+            if (OXY[0].count_node * OXY[1].count_node != 0)
+            {
+                av = sum / OXY[0].count_node * OXY[1].count_node;
+                return av;
+            }
+            else return 0;
         }
         public override IEnumerable<Vector2> GetCoords()
         {
@@ -283,6 +302,13 @@ namespace lab1v2
         IEnumerator<DataItem> IEnumerable<DataItem>.GetEnumerator()
         {
             return dataItems.GetEnumerator();
+        }
+        public override double GetAverage()
+        {
+            if (dataItems.Count != 0)
+                return dataItems.Average<DataItem>(x => x.complex.Magnitude);
+            else
+                return 0;
         }
         public void InitRandom(int nItems, float xmax, float ymax, double minValue, double maxValue)
         {
