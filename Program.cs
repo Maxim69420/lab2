@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections;
 using System.IO;
 using System.Linq;
+//using System.Math;
 
 namespace lab1v2
 {
@@ -61,7 +62,7 @@ namespace lab1v2
         public abstract IEnumerable<Vector2> GetCoords();
         public abstract IEnumerable<DataItem> GetDataItem();
         public abstract Complex[] NearAverage(float eps);
-        public abstract double GetAverage();
+        //public abstract double GetAverage();
         public abstract string ToLongString();
         public abstract string ToLongString(string format);
         public virtual string ToString(string format)
@@ -144,7 +145,7 @@ namespace lab1v2
                     get.Dispose();
             }
         }
-        public override double GetAverage()
+        /*public override double GetAverage()
         {
             double av = 0, sum = 0;
             for (int j = 0; j < OXY[1].count_node; j++)
@@ -161,7 +162,7 @@ namespace lab1v2
                 return av;
             }
             else return 0;
-        }
+        }*/
         public override IEnumerable<Vector2> GetCoords()
         {
             yield return new Vector2(0f, 0f);
@@ -303,13 +304,13 @@ namespace lab1v2
         {
             return dataItems.GetEnumerator();
         }
-        public override double GetAverage()
+        /*public override double GetAverage()
         {
             if (dataItems.Count != 0)
                 return dataItems.Average<DataItem>(x => x.complex.Magnitude);
             else
                 return 0;
-        }
+        }*/
         public void InitRandom(int nItems, float xmax, float ymax, double minValue, double maxValue)
         {
             Random rand = new Random();
@@ -384,7 +385,24 @@ namespace lab1v2
         }
         public double GetAverage
         {
-            get { return V2Datas.Average<V2Data>(x => x.GetAverage()); }
+            get
+            {
+                var query1 = from elems in
+                            (from data in V2Datas
+                            where data is V2DataCollection
+                            select (V2DataCollection)data)
+                            from item in elems
+                            select Complex.Abs(item.complex);
+                var query2 = from elems in
+                            (from data in V2Datas
+                            where data is V2DataOnGrid
+                            select (V2DataOnGrid)data)
+                            from item in elems
+                            select Complex.Abs(item.complex);
+                var query = from item in query1.Except(query2)
+                            select item;
+                return query.Average();
+            }
         }
         public IEnumerator<V2Data> GetEnumerator()
         {
@@ -439,8 +457,8 @@ namespace lab1v2
         public void AddDefaults()
         {
             V2Datas = new List<V2Data>();
-            Grid1D x1 = new Grid1D(1, 3);
 
+            Grid1D x1 = new Grid1D(1, 3);
             V2DataOnGrid d1 = new V2DataOnGrid(x1, x1, "Grid", 2);
             d1.InitRandom(1, 5);
             V2Datas.Add(d1);
