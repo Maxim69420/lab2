@@ -1,13 +1,38 @@
-using System;
+﻿using System;
 using System.Numerics;
 using System.Collections.Generic;
 using System.Collections;
 using System.IO;
 using System.Linq;
+using System.ComponentModel;
 //using System.Math;
+
 
 namespace lab1v2
 {
+    enum ChangeInfo
+    {
+        ItemChanged,
+        Add,
+        Remove,
+        Replace
+    }
+
+    class DataChangedEventArgs
+    {
+        public ChangeInfo changes { get; set; }
+        public double id;
+        public DataChangedEventArgs(ChangeInfo x, double y)
+        {
+            changes = x;
+            id = y;
+        }
+        public override string ToString() => $"{changes}  {id}"; // решил попробовать
+                                                                 // что-то новое
+    }
+
+    delegate void DataChangedEventHandler(object source, DataChangedEventArgs args);
+
     struct DataItem
     {
         public Vector2 cord { get; set; }
@@ -50,14 +75,54 @@ namespace lab1v2
             return step.ToString(format) + " " + count_node.ToString() + "\n";
         }
     }
-    abstract class V2Data
+    abstract class V2Data : INotifyPropertyChanged
     {
-        public string data { get; set; }
-        public double period { get; set; }
+        public string data
+        {
+            get
+            {
+                return data;
+            }
+            set
+            {
+                data = value;
+                PropertyChanged(this, new PropertyChangedEventArgs("data"));
+            }
+        }
+        public double period
+        {
+            get
+            {
+                return period;
+            }
+            set
+            {
+                period = value;
+                PropertyChanged(this, new PropertyChangedEventArgs("Period"));
+            }
+        }
         public V2Data(string data = "Data", double period = 2)
         {
             this.data = data;
             this.period = period;
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;//INotifyPropertyChanged.
+        /*{
+            add
+            {
+                throw new NotImplementedException();
+            }
+
+            remove
+            {
+                throw new NotImplementedException();
+            }
+        }*/
+        protected void OnChanged(string property_name)
+        {
+            if (PropertyChanged != null)
+                PropertyChanged(this, new PropertyChangedEventArgs(property_name));
         }
         public abstract IEnumerable<Vector2> GetCoords();
         public abstract IEnumerable<DataItem> GetDataItem();
@@ -113,7 +178,7 @@ namespace lab1v2
                 coord.X = 0;
             }
         }
-        public V2DataOnGrid(string filename): base("Data", 2)
+        public V2DataOnGrid(string filename) : base("Data", 2)
         {
             StreamReader get = new StreamReader(filename);
             try
@@ -383,22 +448,30 @@ namespace lab1v2
         {
             get { return V2Datas.Count; }
         }
+        public event DataChangedEventHandler DataChanged;
+
+        public void DataSubscribe(object source, PropertyChangedEventArgs args)
+        {
+            if (DataChanged != null)
+                DataChanged(this, new DataChangedEventArgs(ChangeInfo.ItemChanged,
+                                                    ((V2Data)source).period));
+        }
         public double GetAverage
         {
             get
             {
                 var query1 = from elems in
                             (from data in V2Datas
-                            where data is V2DataCollection
-                            select (V2DataCollection)data)
-                            from item in elems
-                            select Complex.Abs(item.complex);
+                             where data is V2DataCollection
+                             select (V2DataCollection)data)
+                             from item in elems
+                             select Complex.Abs(item.complex);
                 var query2 = from elems in
                             (from data in V2Datas
-                            where data is V2DataOnGrid
-                            select (V2DataOnGrid)data)
-                            from item in elems
-                            select Complex.Abs(item.complex);
+                             where data is V2DataOnGrid
+                             select (V2DataOnGrid)data)
+                             from item in elems
+                             select Complex.Abs(item.complex);
                 var query = from item in query1.Except(query2)
                             select item;
                 return query.Average();
@@ -444,16 +517,49 @@ namespace lab1v2
 
         public void Add(V2Data item)
         {
+            item.PropertyChanged += DataSubscribe;
             V2Datas.Add(item);
+            if (DataChanged != null)
+                DataChanged(this, new DataChangedEventArgs(ChangeInfo.Add,
+                                                                item.period));
         }
         public bool Remove(string id, double w)
         {
             int baseCount = V2Datas.Count;
 
+            IEnumerable<V2Data> deleted =
+                from data in V2Datas
+                where (data.period == w) && (data.data == id)
+                select data;
+
+            foreach (V2Data item in deleted)
+            {
+                item.PropertyChanged -= DataSubscribe;
+                if (DataChanged != null)
+                    DataChanged(this, new DataChangedEventArgs(ChangeInfo.Remove,
+                                                                    item.period));
+            }
+
             V2Datas.RemoveAll(x => (x.data == id) && (x.period == w));
 
             return baseCount != V2Datas.Count;
         }
+
+        public V2Data this[int index]
+        {
+            get
+            {
+                return V2Datas[index];
+            }
+            set
+            {
+                if (DataChanged != null)
+                    DataChanged(this, new DataChangedEventArgs(ChangeInfo.Replace,
+                                                             V2Datas[index].period));
+                V2Datas[index] = value;
+            }
+        }
+
         public void AddDefaults()
         {
             V2Datas = new List<V2Data>();
@@ -461,16 +567,16 @@ namespace lab1v2
             Grid1D x1 = new Grid1D(1, 3);
             V2DataOnGrid d1 = new V2DataOnGrid(x1, x1, "Grid", 2);
             d1.InitRandom(1, 5);
-            V2Datas.Add(d1);
+            Add(d1);
 
             V2DataCollection d2 = new V2DataCollection("Collection", 1.5);
             d2.InitRandom(3, 5, 5, 4.5, 6.9);
-            V2Datas.Add(d2);
+            Add(d2);
 
             Grid1D x2 = new Grid1D(1, 3);
             V2DataOnGrid d3 = new V2DataOnGrid(x2, x2, "Grid 2", 0.5);
             d3.InitRandom(1, 4);
-            V2Datas.Add(d3);
+            Add(d3);
         }
         public override string ToString()
         {
@@ -494,8 +600,13 @@ namespace lab1v2
             return str;
         }
     }
+
     class MainClass
     {
+        static void CatchCalls(object sender, DataChangedEventArgs args)
+        {
+            Console.WriteLine(args.ToString());
+        }
         public static void Main(string[] args)
         {
             /*Console.WriteLine("Task 1\n");
@@ -526,16 +637,21 @@ namespace lab1v2
                 }
                 Console.WriteLine("\n");
             }*/
+
             try
             {
-                Console.WriteLine("--------initializing V2DataOnGrid from text file--------\n");
+                //Console.WriteLine("--------initializing V2DataOnGrid from text file--------\n");
                 V2DataOnGrid DOG = new V2DataOnGrid("filename.txt");
                 Console.WriteLine(DOG.ToLongString("N1"));
-                Console.WriteLine("--------------------------------------------------------\n");
+                //Console.WriteLine("--------------------------------------------------------\n");
 
                 V2MainCollection MC = new V2MainCollection();
-                MC.AddDefaults();
-                Console.WriteLine(MC.ToLongString());
+                MC.DataChanged += CatchCalls;
+                MC.AddDefaults(); //Add
+                MC.Remove("Grid 2", 0.5); //Remove
+                MC[0].period = 0.3; //ItemChanged
+                MC[0] = DOG; //Replace
+                /*Console.WriteLine(MC.ToLongString());
 
                 foreach (Vector2 coord in MC.GetValue)
                 {
@@ -543,7 +659,7 @@ namespace lab1v2
                 }
                 Console.WriteLine("\n");
 
-                Console.WriteLine(MC.GetNearAverage.ToString("N2"));
+                Console.WriteLine(MC.GetNearAverage.ToString("N2"));*/
             }
             catch (Exception e)
             {
@@ -551,6 +667,7 @@ namespace lab1v2
                 return;
             }
         }
+
     }
 }
   
